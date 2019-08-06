@@ -1,15 +1,15 @@
 { ************************************************************* }
-{ ²úÆ·Ãû³Æ£º Html´¦Àí                                           }
-{ µ¥ÔªÃèÊö£ºHtmlParser.pas º¯Êı                                 }
-{ µ¥Ôª×÷Õß£ºpzx                                                 }
-{ ´´½¨Ê±¼ä£º2019/08/06                                          }
-{ ±¸    ×¢£º                                                    }
-{ ĞŞ¸Ä¼ÇÂ¼£º                                                    }
+{ äº§å“åç§°ï¼š Htmlå¤„ç†                                           }
+{ å•å…ƒæè¿°ï¼šHtmlParser.pas å‡½æ•°                                 }
+{ å•å…ƒä½œè€…ï¼špzx                                                 }
+{ åˆ›å»ºæ—¶é—´ï¼š2019/08/06                                          }
+{ å¤‡    æ³¨ï¼š                                                    }
+{ ä¿®æ”¹è®°å½•ï¼š                                                    }
 { ************************************************************* }
-{ ²Î¿¼Á´½Ó:
+{ å‚è€ƒé“¾æ¥:
   http://www.raysoftware.cn/?p=370       OnlyRead
   https://github.com/ying32/htmlparser   XE3Upper
-  Ìí¼ÓÁË ¸÷ÖÖset·½·¨ ×¢Òâcontent(Text) ºÍ Orignal(html) µÄ²»Í¬
+  æ·»åŠ äº† å„ç§setæ–¹æ³• æ³¨æ„content(Text) å’Œ Orignal(html) çš„ä¸åŒ
 }
 unit HtmlParser;
 
@@ -39,28 +39,28 @@ type
     function GetChildren(Index: Integer): IHtmlElement; stdcall;
     function GetCloseTag: IHtmlElement; stdcall;
     function GetInnerHtml(): WideString; safecall;
-    procedure SetInnerHtml(Value: WideString); stdcall;
     function GetOuterHtml(): WideString; safecall;
     function GetInnerText(): WideString; safecall;
     procedure SetInnerText(Value: WideString); stdcall;
     function GetAttributes(Key: WideString): WideString; safecall;
+    procedure SetAttributes(Key: WideString; Value: WideString); stdcall;
     function GetSourceLineNum(): Integer; stdcall;
     function GetSourceColNum(): Integer; stdcall;
 
-    // ÊôĞÔÊÇ·ñ´æÔÚ
+    // å±æ€§æ˜¯å¦å­˜åœ¨
     function HasAttribute(AttributeName: WideString): Boolean; stdcall;
-    // ²éÕÒ½Úµã
+    // æŸ¥æ‰¾èŠ‚ç‚¹
     { FindElements('Link','type="application/rss+xml"')
       FindElements('','type="application/rss+xml"')
     }
     function FindElements(ATagName: WideString; AAttributes: WideString; AOnlyInTopElement: Boolean): IHtmlElementList; stdcall;
-    { ÓÃCSSÑ¡ÔñÆ÷Óï·¨²éÕÒElement,²»Ö§³Ö"Î±Àà"
+    { ç”¨CSSé€‰æ‹©å™¨è¯­æ³•æŸ¥æ‰¾Element,ä¸æ”¯æŒ"ä¼ªç±»"
       CSS Selector Style search,not support Pseudo-classes.
 
       http://www.w3.org/TR/CSS2/selector.html
     }
     function SimpleCSSSelector(const selector: WideString): IHtmlElementList; stdcall;
-    // Ã¶¾ÙÊôĞÔ
+    // æšä¸¾å±æ€§
     procedure EnumAttributeNames(AParam: Pointer; ACallBack: TEnumAttributeNameCallBack); stdcall;
     function AppedChild(const ATag: string): IHtmlElement; stdcall;
     property TagName: WideString read GetTagName write SetTagName;
@@ -70,15 +70,16 @@ type
     property Content: WideString read GetContent;
     property Orignal: WideString read GetOrignal;
     property Owner: IHtmlElement read GetOwner;
-    // »ñÈ¡ÔªËØÔÚÔ´´úÂëÖĞµÄÎ»ÖÃ
+    // è·å–å…ƒç´ åœ¨æºä»£ç ä¸­çš„ä½ç½®
     property SourceLineNum: Integer read GetSourceLineNum;
     property SourceColNum: Integer read GetSourceColNum;
     //
-    property InnerHtml: WideString read GetInnerHtml write SetInnerHtml;
+    property InnerHtml: WideString read GetInnerHtml;
     property OuterHtml: WideString read GetOuterHtml;
     property InnerText: WideString read GetInnerText write SetInnerText;
     property Text: WideString read GetInnerText write SetInnerText;
-    property Attributes[Key: WideString]: WideString read GetAttributes;
+    property Attributes[Key: WideString]: WideString read GetAttributes write SetAttributes;
+
   end;
 
   IHtmlElementList = interface
@@ -115,7 +116,9 @@ const
   TpFormatAsInline = $08;
   TpPreserveWhitespace = $10;
   tpInlineOrEmpty = TpInline or TpEmpty;
-
+  // By design each IHtmlElement has a TagName property, even it's a 'Text' element.
+  // so cSpecialTagName_Text represents the fake tag name of a Text element
+  cSpecialTagName_Text = '#TEXT';
 type
 {$IFDEF USE_GENERICS}
   TStringDynArray = TArray<string>;
@@ -131,7 +134,7 @@ type
   THtmlElement = class;
 {$IFNDEF USE_GENERICS}
 
-  { ÎªÁË²»ÒıÈëClassesµ¥Ôª,ÒòÎªÔÚ¸ß°æ±¾DelphiÖĞClassesµ¥ÔªÍùÍùÊÇµ¼ÖÂÌå»ıÅòÕÍ×î¿ìµÄÒòËØ. }
+  { ä¸ºäº†ä¸å¼•å…¥Classeså•å…ƒ,å› ä¸ºåœ¨é«˜ç‰ˆæœ¬Delphiä¸­Classeså•å…ƒå¾€å¾€æ˜¯å¯¼è‡´ä½“ç§¯è†¨èƒ€æœ€å¿«çš„å› ç´ . }
 
   TList = class
   private
@@ -167,7 +170,7 @@ type
 
   THtmlElementList = TList;
 
-  { Ã»ÓĞÊ¹ÓÃ·ºĞÍµ¥ÔªµÄÈİÆ÷,ÊÇÒòÎªÎªÁË¿ÉÒÔÔÚµÍ°æ±¾DelphiÉÏ±àÒë }
+  { æ²¡æœ‰ä½¿ç”¨æ³›å‹å•å…ƒçš„å®¹å™¨,æ˜¯å› ä¸ºä¸ºäº†å¯ä»¥åœ¨ä½ç‰ˆæœ¬Delphiä¸Šç¼–è¯‘ }
   TIHtmlElementList = class(TInterfacedObject, IHtmlElementList)
   private
     FList: TList;
@@ -224,7 +227,7 @@ type
 {$ENDIF}
 {$IFDEF CUSTOM_STRINGBUILDER}
 
-  { µÍ°æ±¾DelphiÖĞÃ»ÓĞTStringBuilder }
+  { ä½ç‰ˆæœ¬Delphiä¸­æ²¡æœ‰TStringBuilder }
 
   TStringBuilder = class(TObject)
   private
@@ -330,23 +333,23 @@ type
     function GetChildren(Index: Integer): IHtmlElement; stdcall;
     function GetCloseTag: IHtmlElement; stdcall;
     function GetInnerHtml(): WideString; safecall;
-    procedure SetInnerHtml(Value: WideString); stdcall;
     function GetOuterHtml(): WideString; safecall;
     function GetInnerText(): WideString; safecall;
     procedure SetInnerText(Value: WideString); stdcall;
     function GetAttributes(Key: WideString): WideString; safecall;
+    procedure SetAttributes(Key: WideString; Value: WideString); stdcall;
     function GetSourceLineNum(): Integer; stdcall;
     function GetSourceColNum(): Integer; stdcall;
 
-    // ÊôĞÔÊÇ·ñ´æÔÚ
+    // å±æ€§æ˜¯å¦å­˜åœ¨
     function HasAttribute(AttributeName: WideString): Boolean; stdcall;
-    // ²éÕÒ½Úµã
+    // æŸ¥æ‰¾èŠ‚ç‚¹
     { FindElements('Link','type="application/rss+xml"')
       FindElements('','type="application/rss+xml"')
     }
     function FindElements(ATagName: WideString; AAttributes: WideString; AOnlyInTopElement: Boolean): IHtmlElementList; stdcall;
     function SimpleCSSSelector(const selector: WideString): IHtmlElementList; stdcall;
-    // Ã¶¾ÙÊôĞÔ
+    // æšä¸¾å±æ€§
     procedure EnumAttributeNames(AParam: Pointer; ACallBack: TEnumAttributeNameCallBack); stdcall;
     function AppedChild(const ATag: string): IHtmlElement; stdcall;
     property TagName: WideString read GetTagName;
@@ -356,14 +359,14 @@ type
     property Content: WideString read GetContent;
     property Orignal: WideString read GetOrignal;
     property Owner: IHtmlElement read GetOwner;
-    // »ñÈ¡ÔªËØÔÚÔ´´úÂëÖĞµÄÎ»ÖÃ
+    // è·å–å…ƒç´ åœ¨æºä»£ç ä¸­çš„ä½ç½®
     property SourceLineNum: Integer read GetSourceLineNum;
     property SourceColNum: Integer read GetSourceColNum;
     //
-    property InnerHtml: WideString read GetInnerHtml write SetInnerHtml;
+    property InnerHtml: WideString read GetInnerHtml;
     property OuterHtml: WideString read GetOuterHtml;
     property InnerText: WideString read GetInnerText write SetInnerText;
-    property Attributes[Key: WideString]: WideString read GetAttributes;
+    property Attributes[Key: WideString]: WideString read GetAttributes write SetAttributes;
   end;
 
   TFNCompareAttr = function(const Item: TAttrSelectorItem; E: THtmlElement): Boolean;
@@ -1153,7 +1156,7 @@ var
       while True do
       begin
         if P^ = #0 then
-          DoError(Format('Î´Íê½áµÄStyleĞĞ:%d;ÁĞ:%d;', [LineNum, ColNum]))
+          DoError(Format('æœªå®Œç»“çš„Styleè¡Œ:%d;åˆ—:%d;', [LineNum, ColNum]))
         else if P^ = '>' then
         begin
           if ((P - 1)^ = '-') and ((P - 2)^ = '-') then
@@ -1202,7 +1205,7 @@ var
       while True do
       begin
         if P^ = #0 then
-          DoError(Format('Î´Íê½áµÄScriptĞĞ:%d;ÁĞ:%d;', [LineNum, ColNum]))
+          DoError(Format('æœªå®Œç»“çš„Scriptè¡Œ:%d;åˆ—:%d;', [LineNum, ColNum]))
         else if P^ = '>' then
         begin
           if ((P - 1)^ = '-') and ((P - 2)^ = '-') then
@@ -1222,7 +1225,7 @@ var
         case P^ of
           #0:
             Break;
-          '"', '''': // ×Ö·û´®
+          '"', '''': // å­—ç¬¦ä¸²
             begin
               stringChar := P^;
               PreIsblique := false;
@@ -1240,11 +1243,11 @@ var
                 IncSrc(P);
               end;
             end;
-          '/': // ×¢ÊÍ
+          '/': // æ³¨é‡Š
             begin
               IncSrc(P);
               case P^ of
-                '/': // ĞĞ×¢ÊÍ
+                '/': // è¡Œæ³¨é‡Š
                   begin
                     while True do
                     begin
@@ -1255,7 +1258,7 @@ var
                       IncSrc(P);
                     end;
                   end;
-                '*': // ¿é×¢ÊÍ
+                '*': // å—æ³¨é‡Š
                   begin
                     IncSrc(P);
                     IncSrc(P);
@@ -1304,7 +1307,7 @@ begin
     if P^ = '<' then
     begin
       IncSrc(P);
-      if P^ = '!' then // ×¢ÊÍ
+      if P^ = '!' then // æ³¨é‡Š
       begin
         ElementType := EtComment;
         IncSrc(P);
@@ -1315,7 +1318,7 @@ begin
               while True do
               begin
                 if not PosCharInTag(P, '>') then
-                  DoError('LineNum:' + IntToStr(BeginLineNum) + 'ÎŞ·¨ÕÒµ½Tag½áÊøµã:' + Copy(oldP, 1, 100))
+                  DoError('LineNum:' + IntToStr(BeginLineNum) + 'æ— æ³•æ‰¾åˆ°Tagç»“æŸç‚¹:' + Copy(oldP, 1, 100))
                 else if (P[-1] = '-') and (P[-2] = '-') then
                 begin
                   IncSrc(P);
@@ -1330,7 +1333,7 @@ begin
               while True do
               begin
                 if not PosCharInTag(P, '>') then
-                  DoError('LineNum:' + IntToStr(BeginLineNum) + 'ÎŞ·¨ÕÒµ½Tag½áÊøµã:' + Copy(oldP, 1, 100))
+                  DoError('LineNum:' + IntToStr(BeginLineNum) + 'æ— æ³•æ‰¾åˆ°Tagç»“æŸç‚¹:' + Copy(oldP, 1, 100))
                 else if (P[-1] = ']') then
                 begin
                   IncSrc(P);
@@ -1346,7 +1349,7 @@ begin
               ElementType := EtDocType;
               IncSrc(P); //
               if not PosCharInTag(P, '>') then
-                DoError('LineNum:' + IntToStr(BeginLineNum) + 'ÎŞ·¨ÕÒµ½Tag½áÊøµã:' + Copy(oldP, 1, 100))
+                DoError('LineNum:' + IntToStr(BeginLineNum) + 'æ— æ³•æ‰¾åˆ°Tagç»“æŸç‚¹:' + Copy(oldP, 1, 100))
               else
                 IncSrc(P);
             end
@@ -1354,7 +1357,7 @@ begin
             begin
               IncSrc(P); //
               if not PosCharInTag(P, '>') then
-                DoError('LineNum:' + IntToStr(BeginLineNum) + 'ÎŞ·¨ÕÒµ½Tag½áÊøµã:' + Copy(oldP, 1, 100))
+                DoError('LineNum:' + IntToStr(BeginLineNum) + 'æ— æ³•æ‰¾åˆ°Tagç»“æŸç‚¹:' + Copy(oldP, 1, 100))
               else
                 IncSrc(P);
             end;
@@ -1369,7 +1372,7 @@ begin
         while True do
         begin
           if not PosCharInTag(P, '>') then
-            DoError('LineNum:' + IntToStr(BeginLineNum) + 'ÎŞ·¨ÕÒµ½Tag½áÊøµã:' + Copy(oldP, 1, 100))
+            DoError('LineNum:' + IntToStr(BeginLineNum) + 'æ— æ³•æ‰¾åˆ°Tagç»“æŸç‚¹:' + Copy(oldP, 1, 100))
           else if (P[-1] = '?') then
           begin
             IncSrc(P);
@@ -1378,18 +1381,18 @@ begin
           IncSrc(P);
         end;
       end
-      else // Õı³£½Úµã
+      else // æ­£å¸¸èŠ‚ç‚¹
       begin
         ElementType := EtTag;
         IncSrc(P); //
         if not PosCharInTag(P, '>') then
-          DoError('LineNum:' + IntToStr(BeginLineNum) + 'ÎŞ·¨ÕÒµ½Tag½áÊøµã:' + Copy(oldP, 1, 100))
+          DoError('LineNum:' + IntToStr(BeginLineNum) + 'æ— æ³•æ‰¾åˆ°Tagç»“æŸç‚¹:' + Copy(oldP, 1, 100))
         else
           IncSrc(P);
       end;
       SetString(Tmp, oldP, P - oldP);
     end
-    else // ÎÄ×Ö½Úµã
+    else // æ–‡å­—èŠ‚ç‚¹
     begin
       ElementType := EtText;
       while True do
@@ -1404,7 +1407,7 @@ begin
     case ElementType of
       EtUnknow:
         begin
-          DoError('LineNum:' + IntToStr(BeginLineNum) + 'ÎŞ·¨½âÎöµÄÄÚÈİ:' + Copy(oldP, 1, 100));
+          DoError('LineNum:' + IntToStr(BeginLineNum) + 'æ— æ³•è§£æçš„å†…å®¹:' + Copy(oldP, 1, 100));
         end;
       EtDocType:
         begin
@@ -1419,7 +1422,7 @@ begin
           //
           if (UpperCase(Tag.FTagName) = 'SCRIPT') and (not Tag.FIsCloseTag) and (not Tag.FClosed) then
           begin
-            // ¶ÁÈ¡Script
+            // è¯»å–Script
             BeginLineNum := LineNum;
             BeginColNum := ColNum;
             Tmp := ParserScriptData(P);
@@ -1428,7 +1431,7 @@ begin
           end
           else if (UpperCase(Tag.FTagName) = 'STYLE') and (not Tag.FIsCloseTag) and (not Tag.FClosed) then
           begin
-            // ¶ÁÈ¡Style
+            // è¯»å–Style
             BeginLineNum := LineNum;
             BeginColNum := ColNum;
             Tmp := ParserStyleData(P);
@@ -1476,7 +1479,7 @@ begin
     E := ElementList[I];
     TagProperty := GetTagProperty(E.FTagName);
 
-    // ¿Õ½Úµã,ÍùÏÂÕÒ,Èç¹ûÏÂÒ»¸ö´øTagµÄ½Úµã²»ÊÇËüµÄ¹Ø±Õ½Úµã,ÄÇÃ´×Ô¶¯¹Ø±Õ
+    // ç©ºèŠ‚ç‚¹,å¾€ä¸‹æ‰¾,å¦‚æœä¸‹ä¸€ä¸ªå¸¦Tagçš„èŠ‚ç‚¹ä¸æ˜¯å®ƒçš„å…³é—­èŠ‚ç‚¹,é‚£ä¹ˆè‡ªåŠ¨å…³é—­
     {
       if (e.IsTagElement) and (not e.FClosed) and
       ((TagProperty and (tpEmpty)) <> 0) then
@@ -1505,7 +1508,7 @@ begin
           Break;
         end;
       end;
-      // Èç¹ûÍùÉÏÕÒ,ÕÒ²»µ½µÄ»°Õâ¸ö¹Ø±ÕTag¿Ï¶¨ÊÇÎŞÒâÒåµÄ.
+      // å¦‚æœå¾€ä¸Šæ‰¾,æ‰¾ä¸åˆ°çš„è¯è¿™ä¸ªå…³é—­Tagè‚¯å®šæ˜¯æ— æ„ä¹‰çš„.
       if FoundIndex > 0 then
       begin
         for J := (I - 1) downto FoundIndex do
@@ -1636,10 +1639,10 @@ var
 begin
 
   Create(AOwner, AText, ALine, ACol);
-  // TODO ½âÎöTagNameºÍÊôĞÔ
+  // TODO è§£æTagNameå’Œå±æ€§
   if AText = '' then
     Exit;
-  // È¥µôÁ½Í·µÄ<
+  // å»æ‰ä¸¤å¤´çš„<
   if AText[1] = '<' then
     Delete(AText, 1, 1);
 
@@ -1647,7 +1650,7 @@ begin
     Exit;
   if AText[Length(AText)] = '>' then
     Delete(AText, Length(AText), 1);
-  // ¼ì²éÊÇ¹Ø±Õ½Úµã,»¹ÊÇµ¥¸öÒÑ¾­¹Ø±ÕµÄ½Úµã
+  // æ£€æŸ¥æ˜¯å…³é—­èŠ‚ç‚¹,è¿˜æ˜¯å•ä¸ªå·²ç»å…³é—­çš„èŠ‚ç‚¹
   if AText = '' then
     Exit;
   FClosed := AText[Length(AText)] = '/';
@@ -1813,20 +1816,59 @@ begin
 end;
 
 procedure THtmlElement._GetHtml(IncludeSelf: Boolean; Sb: TStringBuilder);
+
+  function GetSelfHtml:string;
+  var
+    LAttrs: string;
+    LV: string;
+  begin
+    if SameText(FTagName, cSpecialTagName_Text) or
+        SameText(FTagName, '#SCRIPT') or
+        SameText(FTagName, '#STYLE') or
+        SameText(FTagName, '#COMMENT') or
+        SameText(FTagName, '#DOCTYPE') or
+        SameText(FTagName, '#DOCUMENT')
+    then
+    begin
+      Result := FContent;
+    end
+    else
+    begin
+      if not FClosed then
+      begin
+        Result := Format('</%s>', [LowerCase(FTagName)]);
+      end else
+      begin
+        LAttrs := '';
+        for LV in FAttributes.GetKeys do
+          if Pos('"', FAttributes.Values[LV]) <> 0 then
+            LAttrs := LAttrs + Format('%s=''%s'' ', [LV, FAttributes.Values[LV]])
+          else
+            LAttrs := LAttrs + Format('%s="%s" ', [LV, FAttributes.Values[LV]]);
+        if Length(LAttrs)  > 2 then
+          LAttrs := ' ' + Trim(LAttrs) ;
+        Result := Format('<%s%s>%s', [LowerCase(FTagName), LAttrs, FContent]);
+      end;
+    end;
+  end;
+
 var
   I: Integer;
   E: THtmlElement;
 begin
   if IncludeSelf then
-    Sb.Append(FOrignal);
+  begin
+    FOrignal := GetSelfHtml;
+    Sb.Append(FOrignal); // FOrignal
+  end;
 
   for I := 0 to FChildren.Count - 1 do
   begin
-    E := (FChildren[I] as IHtmlElementObj).HtmlElement;
+    E := FChildren[I] as THtmlElement;
     E._GetHtml(True, Sb);
   end;
   if IncludeSelf and (FCloseTag <> nil) then
-    (FCloseTag as IHtmlElementObj).HtmlElement._GetHtml(True, Sb);
+    (FCloseTag as THtmlElement)._GetHtml(True, Sb);
 end;
 
 procedure THtmlElement._GetText(IncludeSelf: Boolean; Sb: TStringBuilder);
@@ -1965,9 +2007,9 @@ begin
   Result := (Length(FTagName) > 0) and (FTagName[1] <> '#');
 end;
 
-procedure THtmlElement.SetInnerHtml(Value: WideString);
+procedure THtmlElement.SetAttributes(Key, Value: WideString);
 begin
-  FOrignal := Value;
+  FAttributes.AddOrSetValue(LowerCase(Key), Value);
 end;
 
 procedure THtmlElement.SetInnerText(Value: WideString);
@@ -2065,7 +2107,7 @@ var
         end;
     else
       begin
-        DoError(Format('ÎŞ·¨½âÎöCSS Attribute²Ù×÷·û[%d,%d]', [LineNum, ColNum]));
+        DoError(Format('æ— æ³•è§£æCSS Attributeæ“ä½œç¬¦[%d,%d]', [LineNum, ColNum]));
       end;
     end;
     SetString(Tmp, oldP, P - oldP);
@@ -2121,7 +2163,7 @@ var
     if P^ = ']' then
       IncSrc(P)
     else
-      DoError(Format('ÎŞ·¨½âÎöAttributeÖµ[%d,%d]', [LineNum, ColNum]));
+      DoError(Format('æ— æ³•è§£æAttributeå€¼[%d,%d]', [LineNum, ColNum]));
 
   end;
 
@@ -3168,4 +3210,3 @@ finalization
   UnInit();
 
 end.
-
